@@ -16,14 +16,14 @@
 <hr>
 
 <h4>2. Encode + Encrypt a File</h4>
-<span>Data file </span><input type="file" id="fileInput"><br><br>
+<span>Data file </span><input type="file" id="fileInput" multiple><br><br>
 <span>Key file </span><input type="file" id="keyInput"><br><br>
 <button onclick="encodeWithRepeatingKey()">Encode + Encrypt</button>
 
 <hr>
 
 <h4>3. Decrypt + Decode a File</h4>
-<span>Data file </span><input type="file" id="encInput"><br><br>
+<span>Data file </span><input type="file" id="encInput" multiple><br><br>
 <span>Key file </span><input type="file" id="keyInputDec"><br><br>
 <button onclick="decryptAndDownload()">Decrypt + Decode</button>
 
@@ -43,78 +43,90 @@ function generate64KBKey() {
 }
 
 function encodeWithRepeatingKey() {
-  const file = document.getElementById('fileInput').files[0];
+  const files = document.getElementById('fileInput').files;
   const keyFile = document.getElementById('keyInput').files[0];
-  if (!file || !keyFile) return alert("Select both input file and key.");
+  if (files.length === 0 || !keyFile) return alert("Select at least one data file and a key file.");
 
   const keyReader = new FileReader();
   keyReader.onload = function () {
     const keyBytes = new Uint8Array(keyReader.result);
 
-    const fileReader = new FileReader();
-    fileReader.onload = function () {
-      const base64 = fileReader.result.split(',')[1];
-      const base64Bytes = new TextEncoder().encode(base64);
+	Array.from(files).forEach(file => {
+	  const fileReader = new FileReader();
+	  fileReader.onload = async function () {
+	    const base64 = fileReader.result.split(',')[1];
+	    const base64Bytes = new TextEncoder().encode(base64);
 
-      const encrypted = new Uint8Array(base64Bytes.length);
-      for (let i = 0; i < base64Bytes.length; i++) {
-        encrypted[i] = base64Bytes[i] ^ keyBytes[i % keyBytes.length];
-      }
+	    const encrypted = new Uint8Array(base64Bytes.length);
+	    for (let i = 0; i < base64Bytes.length; i++) {
+	      encrypted[i] = base64Bytes[i] ^ keyBytes[i % keyBytes.length];
+	    }
 
-      const blob = new Blob([encrypted], { type: 'application/octet-stream' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = file.name + '.enc';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    };
+	    // Hash the original filename
+	    const filenameHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(file.name));
+	    const hashArray = Array.from(new Uint8Array(filenameHash));
+	    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16); // use first 16 hex chars
 
-    fileReader.readAsDataURL(file);
+	    const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+	    const link = document.createElement('a');
+	    link.href = URL.createObjectURL(blob);
+	    link.download = `${hashHex}.enc`;
+	    document.body.appendChild(link);
+	    link.click();
+	    document.body.removeChild(link);
+	  };
+
+	  fileReader.readAsDataURL(file);
+	});
+
   };
 
   keyReader.readAsArrayBuffer(keyFile);
 }
+
 
 function decryptAndDownload() {
-  const encFile = document.getElementById('encInput').files[0];
+  const encFiles = document.getElementById('encInput').files;
   const keyFile = document.getElementById('keyInputDec').files[0];
-  if (!encFile || !keyFile) return alert("Select both encrypted file and key.");
+  if (encFiles.length === 0 || !keyFile) return alert("Select at least one encrypted file and a key.");
 
   const keyReader = new FileReader();
   keyReader.onload = function () {
     const keyBytes = new Uint8Array(keyReader.result);
 
-    const encReader = new FileReader();
-    encReader.onload = function () {
-      const encryptedBytes = new Uint8Array(encReader.result);
+    Array.from(encFiles).forEach(encFile => {
+      const encReader = new FileReader();
+      encReader.onload = function () {
+        const encryptedBytes = new Uint8Array(encReader.result);
 
-      const decodedBase64Bytes = new Uint8Array(encryptedBytes.length);
-      for (let i = 0; i < encryptedBytes.length; i++) {
-        decodedBase64Bytes[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
-      }
+        const decodedBase64Bytes = new Uint8Array(encryptedBytes.length);
+        for (let i = 0; i < encryptedBytes.length; i++) {
+          decodedBase64Bytes[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
+        }
 
-      const base64String = new TextDecoder().decode(decodedBase64Bytes);
-      try {
-        const binaryData = Uint8Array.from(atob(base64String), c => c.charCodeAt(0));
-        const blob = new Blob([binaryData], { type: 'application/octet-stream' });
+        const base64String = new TextDecoder().decode(decodedBase64Bytes);
+        try {
+          const binaryData = Uint8Array.from(atob(base64String), c => c.charCodeAt(0));
+          const blob = new Blob([binaryData], { type: 'application/octet-stream' });
 
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = encFile.name.replace(/.enc$/, '.dec') || '.dec';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (e) {
-        alert("Decryption failed: corrupted base64 or invalid key.");
-      }
-    };
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = encFile.name.replace(/\.enc$/, '.dec') || 'decoded_file.dec';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (e) {
+          alert(`Decryption failed for file ${encFile.name}: corrupted base64 or invalid key.`);
+        }
+      };
 
-    encReader.readAsArrayBuffer(encFile);
+      encReader.readAsArrayBuffer(encFile);
+    });
   };
 
   keyReader.readAsArrayBuffer(keyFile);
 }
+
 </script>
 
 </body>
