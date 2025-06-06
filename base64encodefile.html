@@ -84,48 +84,39 @@ async function encodeWithRepeatingKey() {
   }
 }
 
-
-
-function decryptAndDownload() {
+async function decryptAndDownload() {
   const encFiles = document.getElementById('encInput').files;
   const keyFile = document.getElementById('keyInputDec').files[0];
   if (encFiles.length === 0 || !keyFile) return alert("Select at least one encrypted file and a key.");
 
-  const keyReader = new FileReader();
-  keyReader.onload = function () {
-    const keyBytes = new Uint8Array(keyReader.result);
+  const keyBytes = new Uint8Array(await keyFile.arrayBuffer());
 
-    Array.from(encFiles).forEach(encFile => {
-      const encReader = new FileReader();
-      encReader.onload = function () {
-        const encryptedBytes = new Uint8Array(encReader.result);
+  for (const encFile of encFiles) {
+    const encryptedBytes = new Uint8Array(await encFile.arrayBuffer());
 
-        const decodedBase64Bytes = new Uint8Array(encryptedBytes.length);
-        for (let i = 0; i < encryptedBytes.length; i++) {
-          decodedBase64Bytes[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
-        }
+    const decodedBase64Bytes = new Uint8Array(encryptedBytes.length);
+    for (let i = 0; i < encryptedBytes.length; i++) {
+      decodedBase64Bytes[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
+    }
 
-        const base64String = new TextDecoder().decode(decodedBase64Bytes);
-        try {
-          const binaryData = Uint8Array.from(atob(base64String), c => c.charCodeAt(0));
-          const blob = new Blob([binaryData], { type: 'application/octet-stream' });
+    try {
+      const base64String = new TextDecoder().decode(decodedBase64Bytes);
+      const binaryData = Uint8Array.from(atob(base64String), c => c.charCodeAt(0));
+      const blob = new Blob([binaryData], { type: 'application/octet-stream' });
 
-          const link = document.createElement('a');
-          link.href = URL.createObjectURL(blob);
-          link.download = encFile.name.replace(/\.enc$/, '.dec') || 'decoded_file.dec';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } catch (e) {
-          alert(`Decryption failed for file ${encFile.name}: corrupted base64 or invalid key.`);
-        }
-      };
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = encFile.name.replace(/\.enc$/, '.dec') || 'decoded_file.dec';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
-      encReader.readAsArrayBuffer(encFile);
-    });
-  };
-
-  keyReader.readAsArrayBuffer(keyFile);
+      // Delay to prevent browser throttling
+      await new Promise(res => setTimeout(res, 300));
+    } catch (e) {
+      alert(`Decryption failed for file ${encFile.name}: corrupted base64 or invalid key.`);
+    }
+  }
 }
 
 </script>
